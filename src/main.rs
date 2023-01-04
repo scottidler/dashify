@@ -1,19 +1,19 @@
 use std::fs;
 use std::path::Path;
-use clap::{Parser};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-	#[arg(short, long)]
+    #[arg(short, long)]
     recursive: bool,
 
-    #[arg(value_name = "PATH")]
+    #[arg(value_name = "PATH", default_value = ".")]
     paths: Vec<String>,
 }
 
 fn main() {
-	let args = Args::parse();
+    let args = Args::parse();
     for path in &args.paths {
         // Check if the provided path is a file or a directory
         if Path::new(path).is_file() {
