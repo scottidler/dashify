@@ -29,7 +29,7 @@ fn main() -> Result<()> {
         } else if Path::new(path).is_dir() {
             rename_files_in_dir(path, args.recursive)?;
         } else {
-            eprintln!("Error: {} is not a file or directory", path);
+            eprintln!("Error: {path} is not a file or directory");
             std::process::exit(1);
         }
     }
