@@ -23,7 +23,6 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     for path in &args.paths {
-        // Check if the provided path is a file or a directory
         if Path::new(path).is_file() {
             rename_file(path)?;
         } else if Path::new(path).is_dir() {
@@ -37,17 +36,19 @@ fn main() -> Result<()> {
 }
 
 fn rename_file(path: &str) -> Result<()> {
-    let re = Regex::new(r"[, -]+")?;
-    if re.is_match(path) {
-        let new_path = re.replace_all(path, "-");
-        let new_path = new_path.to_lowercase();
-        fs::rename(path, new_path.as_ref() as &std::path::Path)?;
-    }
+    let re = Regex::new(r"[, ]+")?;
+    let new_path = re.replace_all(path, "-");
+
+    let re_hyphens = Regex::new(r"-+")?;
+    let new_path = re_hyphens.replace_all(&new_path, "-");
+
+    let new_path = new_path.to_lowercase();
+    fs::rename(path, new_path.as_ref() as &std::path::Path)?;
     Ok(())
 }
 
+
 fn rename_files_in_dir(dir: &str, recursive: bool) -> Result<()> {
-    // Iterate through the directory and rename files with spaces in their names
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
