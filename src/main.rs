@@ -4,12 +4,13 @@ use regex::Regex;
 use std::fs;
 use std::path::Path;
 
-#[derive(Parser)]
-#[command(
-    name = "dashify",
-    about = "lowercases, and removes spaces and other chars in file names"
-)]
-#[command(version = "0.1.0")]
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/git_describe.rs"));
+}
+
+#[derive(Parser, Debug)]
+#[command(name = "dashify", about = "lowercases, and removes spaces and other chars in file names")]
+#[command(version = built_info::GIT_DESCRIBE)]
 #[command(author = "Scott A. Idler <scott.a.idler@gmail.com>")]
 #[command(arg_required_else_help = true)]
 struct Args {
