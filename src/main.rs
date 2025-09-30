@@ -4,13 +4,11 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-mod built_info {
-    include!(concat!(env!("OUT_DIR"), "/git_describe.rs"));
-}
+// Built-in version from build.rs via env!("GIT_DESCRIBE")
 
 #[derive(Parser, Debug)]
 #[command(name = "dashify", about = "lowercases, removes spaces, underscores, and other unwanted chars in file names")]
-#[command(version = built_info::GIT_DESCRIBE)]
+#[command(version = env!("GIT_DESCRIBE"))]
 #[command(author = "Scott A. Idler <scott.a.idler@gmail.com>")]
 #[command(arg_required_else_help = true)]
 struct Args {
