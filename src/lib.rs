@@ -1,10 +1,17 @@
 use regex::Regex;
 
+/// Options for controlling dashify behavior
+#[derive(Debug, Clone, Default)]
+pub struct DashifyOptions {
+    /// When true, convert underscores to dashes
+    pub force_dash: bool,
+}
+
 /// Dashify a filename according to the specification.
 /// This only transforms the filename, not the path.
-pub fn dashify(filename: &str) -> String {
+pub fn dashify(filename: &str, options: &DashifyOptions) -> String {
     // Check for early exit conditions
-    if should_leave_alone(filename) {
+    if should_leave_alone(filename, options) {
         return filename.to_string();
     }
 
@@ -12,7 +19,7 @@ pub fn dashify(filename: &str) -> String {
     let (name, ext) = split_name_and_extension(filename);
 
     // Process the name part
-    let processed = process_name(&name);
+    let processed = process_name(&name, options);
 
     // Rejoin with extension (lowercased)
     if ext.is_empty() {
@@ -23,7 +30,7 @@ pub fn dashify(filename: &str) -> String {
 }
 
 /// Determine if a filename should be left completely alone
-fn should_leave_alone(filename: &str) -> bool {
+fn should_leave_alone(filename: &str, options: &DashifyOptions) -> bool {
     // Leading or trailing spaces - leave alone
     if filename.starts_with(' ') || filename.ends_with(' ') {
         return true;
@@ -68,7 +75,7 @@ fn should_leave_alone(filename: &str) -> bool {
     }
 
     // Files that are already clean (lowercase, proper separators, no issues)
-    if is_already_clean(filename) {
+    if is_already_clean(filename, options) {
         return true;
     }
 
@@ -121,9 +128,14 @@ fn is_clean_name(name: &str) -> bool {
 }
 
 /// Check if filename is already properly dashified
-fn is_already_clean(filename: &str) -> bool {
+fn is_already_clean(filename: &str, options: &DashifyOptions) -> bool {
     // Must not have any uppercase, spaces, or special chars that need conversion
     if filename.chars().any(|c| c.is_ascii_uppercase()) {
+        return false;
+    }
+
+    // If force_dash is enabled, any underscore means it needs processing
+    if options.force_dash && filename.contains('_') {
         return false;
     }
 
@@ -228,7 +240,7 @@ fn split_name_and_extension(filename: &str) -> (String, String) {
 }
 
 /// Process the name part of a filename
-fn process_name(name: &str) -> String {
+fn process_name(name: &str, options: &DashifyOptions) -> String {
     // Handle hidden file prefix
     let (prefix, working_name) = if let Some(rest) = name.strip_prefix('.') { (".", rest) } else { ("", name) };
 
@@ -252,6 +264,11 @@ fn process_name(name: &str) -> String {
         processed = processed.replace(c, "-");
     }
 
+    // Step 4.5: If force_dash, convert underscores to dashes
+    if options.force_dash {
+        processed = processed.replace('_', "-");
+    }
+
     // Step 5: Handle underscore collapsing (but preserve single underscores)
     // First collapse mixed separator sequences
     processed = collapse_mixed_separators(&processed);
@@ -260,9 +277,11 @@ fn process_name(name: &str) -> String {
     let re_dashes = Regex::new(r"-+").unwrap();
     processed = re_dashes.replace_all(&processed, "-").to_string();
 
-    // Step 7: Collapse multiple underscores
-    let re_underscores = Regex::new(r"_+").unwrap();
-    processed = re_underscores.replace_all(&processed, "_").to_string();
+    // Step 7: Collapse multiple underscores (only if not force_dash)
+    if !options.force_dash {
+        let re_underscores = Regex::new(r"_+").unwrap();
+        processed = re_underscores.replace_all(&processed, "_").to_string();
+    }
 
     // Step 8: Collapse double dots
     while processed.contains("..") {
@@ -419,33 +438,41 @@ fn collapse_mixed_separators(s: &str) -> String {
 mod tests {
     use super::*;
 
+    fn default_opts() -> DashifyOptions {
+        DashifyOptions::default()
+    }
+
+    fn force_dash_opts() -> DashifyOptions {
+        DashifyOptions { force_dash: true }
+    }
+
     // ============================================================
     // 1. Basic Separators
     // ============================================================
 
     #[test]
     fn test_1_1_space_becomes_dash() {
-        assert_eq!(dashify("file name.txt"), "file-name.txt");
+        assert_eq!(dashify("file name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_1_2_underscore_left_alone() {
-        assert_eq!(dashify("file_name.txt"), "file_name.txt");
+        assert_eq!(dashify("file_name.txt", &default_opts()), "file_name.txt");
     }
 
     #[test]
     fn test_1_3_plus_becomes_dash() {
-        assert_eq!(dashify("file+name.txt"), "file-name.txt");
+        assert_eq!(dashify("file+name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_1_4_comma_becomes_dash() {
-        assert_eq!(dashify("file,name.txt"), "file-name.txt");
+        assert_eq!(dashify("file,name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_1_5_dot_in_middle_left_alone() {
-        assert_eq!(dashify("file.name.txt"), "file.name.txt");
+        assert_eq!(dashify("file.name.txt", &default_opts()), "file.name.txt");
     }
 
     // ============================================================
@@ -455,39 +482,42 @@ mod tests {
     #[test]
     fn test_2_1_pascal_case_split() {
         assert_eq!(
-            dashify("ConsiderationsWhileProjectPlanning.doc"),
+            dashify("ConsiderationsWhileProjectPlanning.doc", &default_opts()),
             "considerations-while-project-planning.doc"
         );
     }
 
     #[test]
     fn test_2_2_camel_case_split() {
-        assert_eq!(dashify("camelCaseFileName.txt"), "camel-case-file-name.txt");
+        assert_eq!(
+            dashify("camelCaseFileName.txt", &default_opts()),
+            "camel-case-file-name.txt"
+        );
     }
 
     #[test]
     fn test_2_3_acronym_at_start() {
-        assert_eq!(dashify("XMLParser.java"), "xml-parser.java");
+        assert_eq!(dashify("XMLParser.java", &default_opts()), "xml-parser.java");
     }
 
     #[test]
     fn test_2_4_acronym_in_middle() {
-        assert_eq!(dashify("getHTTPResponse.js"), "get-http-response.js");
+        assert_eq!(dashify("getHTTPResponse.js", &default_opts()), "get-http-response.js");
     }
 
     #[test]
     fn test_2_5_two_letter_acronym() {
-        assert_eq!(dashify("IOStream.py"), "io-stream.py");
+        assert_eq!(dashify("IOStream.py", &default_opts()), "io-stream.py");
     }
 
     #[test]
     fn test_2_6_iphone_style() {
-        assert_eq!(dashify("iPhone.txt"), "iphone.txt");
+        assert_eq!(dashify("iPhone.txt", &default_opts()), "iphone.txt");
     }
 
     #[test]
     fn test_2_7_acronym_then_word() {
-        assert_eq!(dashify("PDFReader.pdf"), "pdf-reader.pdf");
+        assert_eq!(dashify("PDFReader.pdf", &default_opts()), "pdf-reader.pdf");
     }
 
     // ============================================================
@@ -496,52 +526,52 @@ mod tests {
 
     #[test]
     fn test_3_1_mixed_separators_collapse() {
-        assert_eq!(dashify("-_-.txt"), "-.txt");
+        assert_eq!(dashify("-_-.txt", &default_opts()), "-.txt");
     }
 
     #[test]
     fn test_3_2_multiple_dashes_collapse() {
-        assert_eq!(dashify("file--name.txt"), "file-name.txt");
+        assert_eq!(dashify("file--name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_3_3_multiple_underscores_collapse() {
-        assert_eq!(dashify("file___name.txt"), "file_name.txt");
+        assert_eq!(dashify("file___name.txt", &default_opts()), "file_name.txt");
     }
 
     #[test]
     fn test_3_4_space_dash_space() {
-        assert_eq!(dashify("file - name.txt"), "file-name.txt");
+        assert_eq!(dashify("file - name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_3_5_space_underscore_space() {
-        assert_eq!(dashify("file _ name.txt"), "file-name.txt");
+        assert_eq!(dashify("file _ name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_3_6_space_plus_space() {
-        assert_eq!(dashify("file + name.txt"), "file-name.txt");
+        assert_eq!(dashify("file + name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_3_7_leading_trailing_dashes_collapse() {
-        assert_eq!(dashify("--file--.txt"), "-file-.txt");
+        assert_eq!(dashify("--file--.txt", &default_opts()), "-file-.txt");
     }
 
     #[test]
     fn test_3_8_leading_trailing_underscores_collapse() {
-        assert_eq!(dashify("___file___.txt"), "_file_.txt");
+        assert_eq!(dashify("___file___.txt", &default_opts()), "_file_.txt");
     }
 
     #[test]
     fn test_3_8_dunder_pattern_preserved() {
-        assert_eq!(dashify("__anything__.py"), "__anything__.py");
+        assert_eq!(dashify("__anything__.py", &default_opts()), "__anything__.py");
     }
 
     #[test]
     fn test_3_8_dunder_pattern_preserved_complex() {
-        assert_eq!(dashify("__init__.py"), "__init__.py");
+        assert_eq!(dashify("__init__.py", &default_opts()), "__init__.py");
     }
 
     // ============================================================
@@ -550,57 +580,57 @@ mod tests {
 
     #[test]
     fn test_4_1_parentheses_become_dash() {
-        assert_eq!(dashify("file(name).txt"), "file-name.txt");
+        assert_eq!(dashify("file(name).txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_2_brackets_removed() {
-        assert_eq!(dashify("file[name].txt"), "filename.txt");
+        assert_eq!(dashify("file[name].txt", &default_opts()), "filename.txt");
     }
 
     #[test]
     fn test_4_3_braces_removed() {
-        assert_eq!(dashify("file{name}.txt"), "filename.txt");
+        assert_eq!(dashify("file{name}.txt", &default_opts()), "filename.txt");
     }
 
     #[test]
     fn test_4_4_single_quote_becomes_dash() {
-        assert_eq!(dashify("file'name.txt"), "file-name.txt");
+        assert_eq!(dashify("file'name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_5_double_quote_becomes_dash() {
-        assert_eq!(dashify("file\"name.txt"), "file-name.txt");
+        assert_eq!(dashify("file\"name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_6_at_becomes_dash() {
-        assert_eq!(dashify("file@name.txt"), "file-name.txt");
+        assert_eq!(dashify("file@name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_7_hash_becomes_dash() {
-        assert_eq!(dashify("file#name.txt"), "file-name.txt");
+        assert_eq!(dashify("file#name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_8_dollar_becomes_dash() {
-        assert_eq!(dashify("file$name.txt"), "file-name.txt");
+        assert_eq!(dashify("file$name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_9_percent_becomes_dash() {
-        assert_eq!(dashify("file%name.txt"), "file-name.txt");
+        assert_eq!(dashify("file%name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_10_ampersand_becomes_dash() {
-        assert_eq!(dashify("file&name.txt"), "file-name.txt");
+        assert_eq!(dashify("file&name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_4_11_exclamation_becomes_dash() {
-        assert_eq!(dashify("file!name.txt"), "file-name.txt");
+        assert_eq!(dashify("file!name.txt", &default_opts()), "file-name.txt");
     }
 
     // ============================================================
@@ -609,27 +639,27 @@ mod tests {
 
     #[test]
     fn test_5_1_all_caps_with_space_lowercased() {
-        assert_eq!(dashify("FILE NAME.TXT"), "file-name.txt");
+        assert_eq!(dashify("FILE NAME.TXT", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_5_2_title_case_lowercased() {
-        assert_eq!(dashify("File Name.txt"), "file-name.txt");
+        assert_eq!(dashify("File Name.txt", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_5_3_mixed_case_extension_lowercased() {
-        assert_eq!(dashify("file name.TXT"), "file-name.txt");
+        assert_eq!(dashify("file name.TXT", &default_opts()), "file-name.txt");
     }
 
     #[test]
     fn test_5_4_readme_preserved() {
-        assert_eq!(dashify("README.md"), "README.md");
+        assert_eq!(dashify("README.md", &default_opts()), "README.md");
     }
 
     #[test]
     fn test_5_5_changelog_preserved() {
-        assert_eq!(dashify("CHANGELOG.md"), "CHANGELOG.md");
+        assert_eq!(dashify("CHANGELOG.md", &default_opts()), "CHANGELOG.md");
     }
 
     // ============================================================
@@ -638,32 +668,32 @@ mod tests {
 
     #[test]
     fn test_6_1_numbers_in_middle_dash_separated() {
-        assert_eq!(dashify("file123name.txt"), "file-123-name.txt");
+        assert_eq!(dashify("file123name.txt", &default_opts()), "file-123-name.txt");
     }
 
     #[test]
     fn test_6_2_numbers_at_start() {
-        assert_eq!(dashify("123file.txt"), "123-file.txt");
+        assert_eq!(dashify("123file.txt", &default_opts()), "123-file.txt");
     }
 
     #[test]
     fn test_6_3_numbers_at_end() {
-        assert_eq!(dashify("file123.txt"), "file-123.txt");
+        assert_eq!(dashify("file123.txt", &default_opts()), "file-123.txt");
     }
 
     #[test]
     fn test_6_4_number_between_pascal_words() {
-        assert_eq!(dashify("File2Name.txt"), "file-2-name.txt");
+        assert_eq!(dashify("File2Name.txt", &default_opts()), "file-2-name.txt");
     }
 
     #[test]
     fn test_6_5_version_number() {
-        assert_eq!(dashify("version2.0.txt"), "version-2.0.txt");
+        assert_eq!(dashify("version2.0.txt", &default_opts()), "version-2.0.txt");
     }
 
     #[test]
     fn test_6_6_semver_style_left_alone() {
-        assert_eq!(dashify("v2.0.1-release.txt"), "v2.0.1-release.txt");
+        assert_eq!(dashify("v2.0.1-release.txt", &default_opts()), "v2.0.1-release.txt");
     }
 
     // ============================================================
@@ -672,32 +702,32 @@ mod tests {
 
     #[test]
     fn test_7_1_uppercase_extension_lowercased() {
-        assert_eq!(dashify("My Document.PDF"), "my-document.pdf");
+        assert_eq!(dashify("My Document.PDF", &default_opts()), "my-document.pdf");
     }
 
     #[test]
     fn test_7_2_multiple_dots_in_name() {
-        assert_eq!(dashify("My.Document.Name.txt"), "my.document.name.txt");
+        assert_eq!(dashify("My.Document.Name.txt", &default_opts()), "my.document.name.txt");
     }
 
     #[test]
     fn test_7_3_no_extension_with_underscore_left_alone() {
-        assert_eq!(dashify("no_extension"), "no_extension");
+        assert_eq!(dashify("no_extension", &default_opts()), "no_extension");
     }
 
     #[test]
     fn test_7_4_tar_gz_left_alone() {
-        assert_eq!(dashify("file.tar.gz"), "file.tar.gz");
+        assert_eq!(dashify("file.tar.gz", &default_opts()), "file.tar.gz");
     }
 
     #[test]
     fn test_7_5_hidden_file_left_alone() {
-        assert_eq!(dashify(".hidden_file"), ".hidden_file");
+        assert_eq!(dashify(".hidden_file", &default_opts()), ".hidden_file");
     }
 
     #[test]
     fn test_7_6_hidden_file_with_space() {
-        assert_eq!(dashify(".Hidden File.txt"), ".hidden-file.txt");
+        assert_eq!(dashify(".Hidden File.txt", &default_opts()), ".hidden-file.txt");
     }
 
     // ============================================================
@@ -706,42 +736,42 @@ mod tests {
 
     #[test]
     fn test_8_1_single_char_left_alone() {
-        assert_eq!(dashify("a.txt"), "a.txt");
+        assert_eq!(dashify("a.txt", &default_opts()), "a.txt");
     }
 
     #[test]
     fn test_8_2_dash_only_left_alone() {
-        assert_eq!(dashify("-.txt"), "-.txt");
+        assert_eq!(dashify("-.txt", &default_opts()), "-.txt");
     }
 
     #[test]
     fn test_8_3_extension_only_left_alone() {
-        assert_eq!(dashify(".txt"), ".txt");
+        assert_eq!(dashify(".txt", &default_opts()), ".txt");
     }
 
     #[test]
     fn test_8_4_multiple_dots_only_left_alone() {
-        assert_eq!(dashify("...txt"), "...txt");
+        assert_eq!(dashify("...txt", &default_opts()), "...txt");
     }
 
     #[test]
     fn test_8_5_double_dots_collapsed() {
-        assert_eq!(dashify("file..name.txt"), "file.name.txt");
+        assert_eq!(dashify("file..name.txt", &default_opts()), "file.name.txt");
     }
 
     #[test]
     fn test_8_6_leading_space_left_alone() {
-        assert_eq!(dashify(" file.txt"), " file.txt");
+        assert_eq!(dashify(" file.txt", &default_opts()), " file.txt");
     }
 
     #[test]
     fn test_8_7_trailing_space_left_alone() {
-        assert_eq!(dashify("file.txt "), "file.txt ");
+        assert_eq!(dashify("file.txt ", &default_opts()), "file.txt ");
     }
 
     #[test]
     fn test_8_8_space_before_extension_left_alone() {
-        assert_eq!(dashify(" .txt"), " .txt");
+        assert_eq!(dashify(" .txt", &default_opts()), " .txt");
     }
 
     // ============================================================
@@ -750,22 +780,22 @@ mod tests {
 
     #[test]
     fn test_9_1_unicode_cafe_left_alone() {
-        assert_eq!(dashify("café.txt"), "café.txt");
+        assert_eq!(dashify("café.txt", &default_opts()), "café.txt");
     }
 
     #[test]
     fn test_9_2_unicode_naive_left_alone() {
-        assert_eq!(dashify("naïve.txt"), "naïve.txt");
+        assert_eq!(dashify("naïve.txt", &default_opts()), "naïve.txt");
     }
 
     #[test]
     fn test_9_3_unicode_japanese_left_alone() {
-        assert_eq!(dashify("日本語.txt"), "日本語.txt");
+        assert_eq!(dashify("日本語.txt", &default_opts()), "日本語.txt");
     }
 
     #[test]
     fn test_9_4_unicode_german_left_alone() {
-        assert_eq!(dashify("Über-Datei.txt"), "Über-Datei.txt");
+        assert_eq!(dashify("Über-Datei.txt", &default_opts()), "Über-Datei.txt");
     }
 
     // ============================================================
@@ -774,12 +804,18 @@ mod tests {
 
     #[test]
     fn test_10_1_already_dashified_left_alone() {
-        assert_eq!(dashify("already-dashified.txt"), "already-dashified.txt");
+        assert_eq!(
+            dashify("already-dashified.txt", &default_opts()),
+            "already-dashified.txt"
+        );
     }
 
     #[test]
     fn test_10_2_dashified_but_caps_lowercased() {
-        assert_eq!(dashify("Already-Dashified.txt"), "already-dashified.txt");
+        assert_eq!(
+            dashify("Already-Dashified.txt", &default_opts()),
+            "already-dashified.txt"
+        );
     }
 
     // ============================================================
@@ -789,7 +825,7 @@ mod tests {
     #[test]
     fn test_original_example_plus_signs() {
         assert_eq!(
-            dashify("considerations+while+project+planning.doc"),
+            dashify("considerations+while+project+planning.doc", &default_opts()),
             "considerations-while-project-planning.doc"
         );
     }
@@ -797,8 +833,40 @@ mod tests {
     #[test]
     fn test_original_example_plus_signs_title_case() {
         assert_eq!(
-            dashify("Consideration+While+Project+Planning.doc"),
+            dashify("Consideration+While+Project+Planning.doc", &default_opts()),
             "consideration-while-project-planning.doc"
         );
+    }
+
+    // ============================================================
+    // 11. Force Dash Tests
+    // ============================================================
+
+    #[test]
+    fn test_11_1_force_dash_converts_underscores() {
+        assert_eq!(dashify("file_name.txt", &force_dash_opts()), "file-name.txt");
+    }
+
+    #[test]
+    fn test_11_2_force_dash_multiple_underscores() {
+        assert_eq!(dashify("file__name.txt", &force_dash_opts()), "file-name.txt");
+    }
+
+    #[test]
+    fn test_11_3_force_dash_mixed_separators() {
+        assert_eq!(dashify("file_name-here.txt", &force_dash_opts()), "file-name-here.txt");
+    }
+
+    #[test]
+    fn test_11_4_force_dash_snake_case() {
+        assert_eq!(
+            dashify("some_snake_case.yaml", &force_dash_opts()),
+            "some-snake-case.yaml"
+        );
+    }
+
+    #[test]
+    fn test_11_5_force_dash_with_numbers() {
+        assert_eq!(dashify("my_project_v2.md", &force_dash_opts()), "my-project-v-2.md");
     }
 }

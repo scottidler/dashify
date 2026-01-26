@@ -3,7 +3,7 @@ use eyre::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use dashify::dashify;
+use dashify::{dashify, DashifyOptions};
 
 // Built-in version from build.rs via env!("GIT_DESCRIBE")
 
@@ -22,6 +22,9 @@ struct Args {
     #[arg(short, long, help = "Show what would be renamed without actually renaming")]
     dry_run: bool,
 
+    #[arg(short, long, help = "Force underscores to become dashes")]
+    force_dash: bool,
+
     #[arg(
         value_name = "PATH",
         default_value = ".",
@@ -32,12 +35,15 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    let options = DashifyOptions {
+        force_dash: args.force_dash,
+    };
     for path in &args.paths {
         let expanded_path = expand_tilde(path);
         if Path::new(&expanded_path).is_file() {
-            rename_file(&expanded_path, args.dry_run)?;
+            rename_file(&expanded_path, args.dry_run, &options)?;
         } else if Path::new(&expanded_path).is_dir() {
-            rename_files_in_dir(&expanded_path, args.recursive, args.dry_run)?;
+            rename_files_in_dir(&expanded_path, args.recursive, args.dry_run, &options)?;
         } else {
             eprintln!("Error: {path} is not a file or directory");
             std::process::exit(1);
@@ -55,11 +61,11 @@ fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-fn rename_file(path: &str, dry_run: bool) -> Result<()> {
+fn rename_file(path: &str, dry_run: bool, options: &DashifyOptions) -> Result<()> {
     let path_buf = PathBuf::from(path);
     if let Some(file_name) = path_buf.file_name() {
         let file_name = file_name.to_string_lossy();
-        let new_file_name = dashify(&file_name);
+        let new_file_name = dashify(&file_name, options);
 
         if new_file_name != file_name {
             let new_path = path_buf.with_file_name(&new_file_name);
@@ -74,14 +80,14 @@ fn rename_file(path: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn rename_files_in_dir(dir: &str, recursive: bool, dry_run: bool) -> Result<()> {
+fn rename_files_in_dir(dir: &str, recursive: bool, dry_run: bool, options: &DashifyOptions) -> Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() {
-            rename_file(&path.to_string_lossy(), dry_run)?;
+            rename_file(&path.to_string_lossy(), dry_run, options)?;
         } else if recursive && path.is_dir() {
-            rename_files_in_dir(&path.to_string_lossy(), true, dry_run)?;
+            rename_files_in_dir(&path.to_string_lossy(), true, dry_run, options)?;
         }
     }
     Ok(())
