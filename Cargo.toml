@@ -11,3 +11,6 @@ clap = { version = "4.5.26", features = ["derive"] }
 eyre = "0.6.12"
 expand-tilde = { git = "ssh://git@github.com/scottidler/expand-tilde", tag = "v0.1.0", version = "0.1.0" }
 regex = "1.11.1"
+
+[build-dependencies]
+build-version = { git = "https://github.com/tatari-tv/build-version-rs", tag = "v0.1.0", version = "0.1.0" }

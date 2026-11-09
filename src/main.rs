@@ -6,14 +6,14 @@ use std::path::Path;
 
 use dashify::{dashify, DashifyOptions};
 
-// Built-in version from build.rs via env!("GIT_DESCRIBE")
+// Built-in version from build.rs via env!("BUILD_VERSION")
 
 #[derive(Parser, Debug)]
 #[command(
     name = "dashify",
     about = "Normalize filenames: converts CamelCase, spaces, and special chars to dashes"
 )]
-#[command(version = env!("GIT_DESCRIBE"))]
+#[command(version = env!("BUILD_VERSION"))]
 #[command(author = "Scott A. Idler <scott.a.idler@gmail.com>")]
 #[command(arg_required_else_help = true)]
 struct Args {
